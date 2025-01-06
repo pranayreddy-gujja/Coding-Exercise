@@ -1,0 +1,93 @@
+package com.example.fetchhiringapp;
+
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.os.Bundle;
+import android.widget.TextView;
+
+import com.google.gson.Gson;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+
+public class MainActivity extends AppCompatActivity {
+
+    private TextView resultTextView;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        resultTextView = findViewById(R.id.result_text_view);
+
+        fetchData();
+    }
+
+    private void fetchData() {
+        new Thread(() -> {
+            try {
+                HttpClient client = HttpClient.newHttpClient();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("https://fetch-hiring.s3.amazonaws.com/hiring.json"))
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                String jsonString = response.body();
+
+                Gson gson = new Gson();
+                Item[] items = gson.fromJson(jsonString, Item[].class);
+
+                List<Item> filteredItems = filterItems(items);
+                Collections.sort(filteredItems, compareByListIdAndName());
+
+                String result = buildResultString(filteredItems);
+
+                runOnUiThread(() -> resultTextView.setText(result));
+
+            } catch (IOException | InterruptedException e) {
+                e.printStackTrace();
+                // Handle network or parsing errors here
+                runOnUiThread(() -> resultTextView.setText("Error fetching data."));
+            }
+        }).start();
+    }
+
+    private List<Item> filterItems(Item[] items) {
+        List<Item> filteredItems = new ArrayList<>();
+        for (Item item : items) {
+            if (item.name != null && !item.name.isEmpty()) {
+                filteredItems.add(item);
+            }
+        }
+        return filteredItems;
+    }
+
+    private Comparator<Item> compareByListIdAndName() {
+        return (item1, item2) -> {
+            int listIdComparison = Integer.compare(item1.listId, item2.listId);
+            return listIdComparison != 0 ? listIdComparison : item1.name.compareTo(item2.name);
+        };
+    }
+
+    private String buildResultString(List<Item> filteredItems) {
+        StringBuilder result = new StringBuilder("Items:\n");
+        for (Item item : filteredItems) {
+            result.append("  - List ID: ").append(item.listId).append(", Name: ").append(item.name).append("\n");
+        }
+        return result.toString();
+    }
+
+    public static class Item {
+        public int id;
+        public int listId;
+        public String name;
+    }
